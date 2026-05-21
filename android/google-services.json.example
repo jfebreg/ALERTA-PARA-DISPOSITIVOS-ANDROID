@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "TU_NUMERO_PROYECTO_DE_FIREBASE_AQUI",
+    "project_id": "TU_ID_PROYECTO_DE_FIREBASE_AQUI",
+    "storage_bucket": "TU_ID_PROYECTO_AQUI.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:TU_NUMERO_PROYECTO_AQUI:android:TU_ID_APLICACION_AQUI",
+        "android_client_info": {
+          "package_name": "com.alarmsms.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "TU_LLAVE_API_WEB_CONFIGURADA_EN_FIREBASE_AQUI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

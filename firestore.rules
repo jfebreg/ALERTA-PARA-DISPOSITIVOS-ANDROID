@@ -1,0 +1,126 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global default-deny safety net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Reuseable global helpers
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function getUserData() {
+      return get(/databases/$(database)/documents/enrolados/$(request.auth.uid)).data;
+    }
+
+    function esAdmin() {
+      return isSignedIn() && exists(/databases/$(database)/documents/enrolados/$(request.auth.uid)) && getUserData().rol == "ADMIN";
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // Helper to validate Enrolado Entity Schema
+    function isValidEnrolado(data) {
+      return data.keys().hasAll(['id', 'nombre', 'telefono', 'rol', 'activo', 'creadoEn', 'ultimaSync'])
+        && data.keys().size() == 7
+        && data.id is string && data.id.size() <= 128
+        && data.nombre is string && data.nombre.size() <= 100
+        && data.telefono is string && data.telefono.size() <= 30
+        && (data.rol == "ADMIN" || data.rol == "USER")
+        && data.activo is bool;
+    }
+
+    // Helper to validate Pin Entity Schema
+    function isValidPin(data) {
+      return data.keys().hasAll(['pin', 'nombreDestino', 'usada', 'creadoPor', 'creadoEn', 'expiraEn'])
+        && (data.keys().size() == 6 || data.keys().size() == 7)
+        && data.pin is string && data.pin.size() == 6
+        && data.nombreDestino is string && data.nombreDestino.size() <= 100
+        && data.usada is bool
+        && data.creadoPor is string && data.creadoPor.size() <= 128
+        && (data.keys().size() == 6 || data.usadaPor is string);
+    }
+
+    // Helper to validate Config Entity Schema
+    function isValidConfig(data) {
+      return data.keys().hasAll(['mensajePredefinido', 'palabraClave', 'pinTtlHoras'])
+        && data.keys().size() == 3
+        && data.mensajePredefinido is string && data.mensajePredefinido.size() <= 160
+        && data.palabraClave is string && data.palabraClave.size() <= 20
+        && data.pinTtlHoras is int && data.pinTtlHoras >= 1 && data.pinTtlHoras <= 72;
+    }
+
+    // Helper to validate Alarma Entity Schema
+    function isValidAlarma(data) {
+      return data.keys().hasAll(['id', 'emisorId', 'emisorNombre', 'mensaje', 'enviadaEn'])
+        && (data.keys().size() == 5 || data.keys().size() == 6)
+        && data.id is string && data.id.size() <= 128
+        && data.emisorId is string && data.emisorId.size() <= 128
+        && data.emisorNombre is string && data.emisorNombre.size() <= 100
+        && data.mensaje is string && data.mensaje.size() <= 200
+        && (data.keys().size() == 5 || data.confirmaciones is map);
+    }
+
+    // 1. Enrolados collection
+    match /enrolados/{userId} {
+      allow get: if isSignedIn() && isValidId(userId);
+      allow list: if isSignedIn(); // client filters, but rules verify signedIn
+      allow create, update: if esAdmin() && isValidEnrolado(request.resource.data);
+      allow delete: if esAdmin();
+    }
+
+    // 2. Pines collection
+    match /pines/{pinId} {
+      allow get: if isSignedIn() && isValidId(pinId);
+      allow list: if esAdmin();
+      allow create: if esAdmin() && isValidPin(request.resource.data);
+      
+      // Admin can update PINs at any time; Users can only mark unused PINs as used
+      allow update: if (esAdmin() && isValidPin(request.resource.data)) || (
+        isSignedIn()
+        && isValidPin(request.resource.data)
+        && resource.data.usada == false
+        && request.resource.data.usada == true
+        && request.resource.data.usadaPor == request.auth.uid
+        // Prevent modifying anything else than usada and usadaPor
+        && request.resource.data.pin == resource.data.pin
+        && request.resource.data.nombreDestino == resource.data.nombreDestino
+        && request.resource.data.creadoPor == resource.data.creadoPor
+        && request.resource.data.creadoEn == resource.data.creadoEn
+        && request.resource.data.expiraEn == resource.data.expiraEn
+      );
+      
+      allow delete: if esAdmin();
+    }
+
+    // 3. Config Singleton
+    match /config/singleton {
+      allow read: if isSignedIn();
+      allow write: if esAdmin() && isValidConfig(request.resource.data);
+    }
+
+    // 4. Alarmas collection
+    match /alarmas/{alarmaId} {
+      allow get: if isSignedIn() && isValidId(alarmaId);
+      allow list: if isSignedIn();
+      allow create: if isSignedIn() && isValidAlarma(request.resource.data) && request.resource.data.emisorId == request.auth.uid;
+      
+      // Updates allowed specifically to add or append recipient confirmations
+      allow update: if isSignedIn() && isValidAlarma(request.resource.data) && (
+        esAdmin() || (
+          // Emisor or Receiver can update (e.g. adding their acknowledgement timestamp)
+          request.resource.data.emisorId == resource.data.emisorId
+          && request.resource.data.mensaje == resource.data.mensaje
+          && request.resource.data.enviadaEn == resource.data.enviadaEn
+          && request.resource.data.id == resource.data.id
+        )
+      );
+      allow delete: if esAdmin();
+    }
+  }
+}

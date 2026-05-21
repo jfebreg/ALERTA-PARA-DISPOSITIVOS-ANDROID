@@ -1,0 +1,6 @@
+{
+  "name": "Android SMS Emergency Alarm",
+  "description": "Android SMS panic alarm with Admin and User scopes, integrated off-grid SMS dispatch, and Firestore enrollment sync.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
